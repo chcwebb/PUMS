@@ -193,3 +193,87 @@ for (samplespan in c(1)){
     }
   }
 }
+
+
+
+
+
+
+
+replicate_calculation <- function(observed,reweighted_calculations){
+  #calculate a SE based on the square difference between the observed value and 80 other values based on different weights
+  #REMEMBER TO USE PWGTP FOR PERSON LEVEL ANALYSIS AND WGTP FOR HOUSEHOLD LEVEL ANALYSIS.
+  #reweighted_calculations must be an 80 item list
+  if (!length(reweighted_calculations)==80){stop("The second argument did not have an 80 item list")}
+  
+  #this doesn't work well when calculating medians / quantiles
+  #and can return a SE of 0 if there are few enough records that they are all the same
+  #(e.g. if  there is only one record that is a hispanic citizen over 65 in Forsyth, the unemployment rate of this group value would be 0 or 100 no matter how you reweight the calculation, causing the SE to be 0)
+  
+  
+  #calculate the sum of squared differences
+  #this formula can be found in https://usa.ipums.org/usa/repwt.shtml among other places
+  sum_of_squared_diff <-0
+  for (reweighted_calculation in reweighted_calculations){
+    
+    diff <- observed-reweighted_calculation
+    sqdiff <- diff^2
+    #add the squared diff to a running total
+    sum_of_squared_diff <- sum_of_squared_diff+sqdiff
+    
+  }
+  SE <- sqrt(sum_of_squared_diff/20)
+
+  return(SE)
+  
+}
+
+#calculate the percent of a group that has certain characteristics
+replicate_proportion <- function(test_name,df,numerator_var,numerator_value,denominator_var="TYPE",denominator_value=1,type='p'){
+  
+
+  #define weights as either the person/household weights
+  if (type=='p'){weight_type <- "PWGTP"
+  } else {weight_type <- "WGTP"}
+
+  #filter the base dataframe
+  df <-  df[df[[denominator_var]]==denominator_value,]
+  dfn <- df[df[[numerator_var]]==numerator_value,]
+  
+  
+  #get population counts
+  denominator_population <- sum(df[[weight_type]])
+  numerator_population <- sum(dfn[[weight_type]])
+  proportion <- numerator_population/denominator_population
+  
+  #a blank vector to paste values into
+  reweighted_results <- vector("list", 80)
+  reweighted_num <- vector("list", 80)
+  reweighted_denom <- vector("list", 80)
+  
+  #this makes WGTP/PWGTP 1-80
+  for (weightnum in 1:80){
+    weightvar <- paste(weight_type,as.character(weightnum),sep="")
+    #reweighted values
+    denominator_population_tmp <- sum(df[[weightvar]])
+    numerator_population_tmp <- sum(dfn[[weightvar]])    
+    proportion_tmp <- numerator_population_tmp/denominator_population_tmp
+    
+    #save the reweighted proportion
+    reweighted_results[weightnum] <- proportion_tmp
+    reweighted_num[weightnum] <- numerator_population_tmp
+    reweighted_denom[weightnum] <- denominator_population_tmp
+    
+    
+  }
+  SE <- replicate_calculation(proportion,proportion_tmp)
+  SE_num <- replicate_calculation(numerator_population,numerator_population_tmp)
+  SE_denom <- replicate_calculation(denominator_population,denominator_population_tmp)
+  CV=100*SE/proportion
+  
+  return(c(test_name,proportion,SE,CV,numerator_population,SE_num,denominator_population,SE_denom))
+}
+
+
+
+
